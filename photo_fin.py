@@ -5,6 +5,7 @@ import math
 minArea = 120000  # в этих рамках находится площадь искомого квадрата
 maxArea = 140000
 squareIndex = 0  # инекс контура квадрата в массиве контуров
+yMin = xMax = 0  # на самом деле так удобнее
 
 source = cv2.imread("Resources/mark1_15_deg.png")
 img = cv2.resize(source, (600, 600))
@@ -36,17 +37,35 @@ if topLine[0][0] > topLine[1][0]:
     topLine[0][0], topLine[1][0] = topLine[1][0], topLine[0][0]
     topLine[0][1], topLine[1][1] = topLine[1][1], topLine[0][1]
 
-angleRad = math.atan((topLine[1][1] - topLine[0][1]) /  # определение угла наклона квадрата в радианах
-                     (topLine[1][0] - topLine[0][0]))
-print(angleRad)
+angleDeg = math.atan((topLine[1][1] - topLine[0][1]) /  # определение угла наклона квадрата в градусах
+                     (topLine[1][0] - topLine[0][0])) * 57.2958
+if angleDeg < 0:  # если угол больше 45 градусов, верхняя линия наклонена под отрицательным углом
+    angleDeg += 90  # чтобы это парировать, прибавляем 90 градусов и получаем наклон верхней правой линии
 
-center = [approx[2][0][0] - approx[0][0][0], approx[2][0][1] - approx[0][0][1]]
+
+center = [int((approx[0][0][0] + approx[2][0][0]) / 2), int((approx[2][0][1] + approx[0][0][1]) / 2)]
 print(center)  # определение центра квадрата(середина линии между 2 противоположными углами)
 
+for i in range(4):
+    if approx[i][0][0] > xMax:
+        xMax = approx[i][0][0]
+
+if topLine[0][1] < topLine[1][1]:
+    yMin = topLine[0][1]  # определение максимального Х и минимального У
+else:
+    yMin = topLine[1][1]
+dx = xMax - center[0]
+dy = center[1] - yMin
+imgCrop = img[(center[1] - dy):(center[1] + dy), (center[0] - dx):(center[0] + dx)]  # первичная обрезка картинки
+                                                                                     # чтобы не поворачивать всю
+matrix = cv2.getRotationMatrix2D(((imgCrop.shape[0] / 2), (imgCrop.shape[1] / 2)), angleDeg, 1)
+imgRotate = cv2.warpAffine(imgCrop, matrix, (imgCrop.shape[1], imgCrop.shape[0]))  # поворот картинки на полученный угол
 
 
-print(topLine)
 img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
+cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
+img = cv2.circle(img, center, 10, (255, 0, 0), 2)
 cv2.imshow("Image", img)
-cv2.imshow("Threshold", thresh)
+cv2.imshow("Cropped", imgRotate)
+# cv2.imshow("Threshold", thresh)
 cv2.waitKey(0)
