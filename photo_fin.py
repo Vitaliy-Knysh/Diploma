@@ -7,9 +7,8 @@ maxArea = 140000
 squareIndex = 0  # инекс контура квадрата в массиве контуров
 yMin = xMax = 0  # на самом деле так удобнее
 direction = 0  # флаг направления, 1 - вверх, дальше по часовой стрелке
-anglePoint = [0, 0]
 
-source = cv2.imread("Resources/mark2_45_deg.png")
+source = cv2.imread("Resources/mark2_60_deg.png")
 img = cv2.resize(source, (600, 600))
 # img = source.copy()  # для отладки
 imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # преобразование картинки в бинарную
@@ -39,7 +38,7 @@ if topLine[0][0] > topLine[1][0]:
     topLine[0][1], topLine[1][1] = topLine[1][1], topLine[0][1]
 
 angleDeg = round(math.atan((topLine[1][1] - topLine[0][1]) /  # определение угла наклона квадрата в градусах
-                     (topLine[1][0] - topLine[0][0])) * 57.2958)
+                           (topLine[1][0] - topLine[0][0])) * 57.2958)
 if angleDeg < 0:  # если угол больше 45 градусов, верхняя линия наклонена под отрицательным углом
     angleDeg += 90  # чтобы это парировать, прибавляем 90 градусов и получаем наклон верхней правой линии
 
@@ -60,33 +59,24 @@ imgCrop = thresh[(center[1] - dy):(center[1] + dy), (center[0] - dx):(center[0] 
 # чтобы не поворачивать всю
 matrix = cv2.getRotationMatrix2D(((imgCrop.shape[0] / 2), (imgCrop.shape[1] / 2)), angleDeg, 1)
 imgRotate = cv2.warpAffine(imgCrop, matrix, (imgCrop.shape[1], imgCrop.shape[0]))  # поворот картинки на полученный угол
-anglePoint[0] = int((matrix[0][0] * approx[0][0][0]) + (matrix[0][1] * approx[0][0][1]) + matrix[0][2])
-anglePoint[1] = int((matrix[1][0] * approx[0][0][0]) + (matrix[1][1] * approx[0][0][1]) + matrix[1][2])
 print(angleDeg)
-'''arr[0] = int(anglePoint[0])  # нужен массив типа int
-arr[1] = int(anglePoint[1])'''
 
-halfLine = int(math.sqrt(((anglePoint[0] - center[0]) ** 2) + ((anglePoint[1] - center[1]) ** 2)))
+halfLine = int(math.sqrt(((approx[0][0][0] - approx[1][0][0]) ** 2) + ((approx[0][0][1] - approx[1][0][1]) ** 2)) // 2)
 print(halfLine)
 # половина длины линии между противоположными углами
 center = [int(imgRotate.shape[0] / 2), int(imgRotate.shape[1] / 2)]
-
 
 print(imgRotate[(center[0]), (center[1] // 2)])
 if imgRotate[(center[0]), (center[1] // 2)] == 0:
     print('yes')
 
-
-'''imgFin = imgRotate[(center[1] - halfLine):(center[1] + halfLine), (center[0] - halfLine):(center[0] + halfLine)]
-print(center)'''
+imgFin = imgRotate[(center[1] - halfLine):(center[1] + halfLine), (center[0] - halfLine):(center[0] + halfLine)]
+print(imgFin.shape)  # обрезание почему-то съедает 2 пикселя
 
 img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
-imgRotate = cv2.circle(imgRotate, center, 10, (255, 0, 0), 2)
-#imgRotate = cv2.circle(imgRotate, ((center[0]), (center[1] // 2)), 10, (0, 0, 0), 2)
-imgRotate = cv2.circle(imgRotate, anglePoint, 3, (255, 255, 255), 2)
 cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
 cv2.imshow("Image", img)
 cv2.imshow("Cropped", imgRotate)
-# cv2.imshow("Fin", imgFin)
+cv2.imshow("Fin", imgFin)
 # cv2.imshow("Threshold", thresh)
 cv2.waitKey(0)
