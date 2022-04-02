@@ -6,7 +6,20 @@ minArea = 120000  # в этих рамках находится площадь �
 maxArea = 140000
 squareIndex = 0  # инекс контура квадрата в массиве контуров
 yMin = xMax = 0  # на самом деле так удобнее
-direction = 0  # флаг направления, 1 - вверх, дальше по часовой стрелке
+points = np.zeros((5, 2), dtype=int)  # здесь хранятся значения точек, проверяемых на цвет
+# проверка на цвет нужна для распознавания кода на картинке
+
+def find_points(midPoint, distance, line_flag, direction):  
+    delta = distance // 2  # эта функция вычисляет координаты точек слева и справа от исходной
+    points[1] = [midPoint[0], midPoint[1] - delta]  # для линии используем 5 точек, для квадрата используем 3
+    points[2] = [midPoint[0], midPoint[1]]
+    points[3] = [midPoint[0], midPoint[1] + delta]
+    if direction == 1:
+        
+    if line_flag == 1:
+        points[0] = [midPoint[0], midPoint[1] - (2 * delta)]
+        points[4] = [midPoint[0], midPoint[1] + (2 * delta)]
+# я не встречал помехи на картинке с камеры, но для порядка не помешает
 
 source = cv2.imread("Resources/mark2_60_deg.png")
 img = cv2.resize(source, (600, 600))
@@ -67,14 +80,28 @@ print(halfLine)
 center = [int(imgRotate.shape[0] / 2), int(imgRotate.shape[1] / 2)]
 
 print(imgRotate[(center[0]), (center[1] // 2)])
-if imgRotate[(center[0]), (center[1] // 2)] == 0:
+if imgRotate[(center[0]), (center[0])] == 255:
     print('yes')
 
 imgFin = imgRotate[(center[1] - halfLine):(center[1] + halfLine), (center[0] - halfLine):(center[0] + halfLine)]
 print(imgFin.shape)  # обрезание почему-то съедает 2 пикселя
 
+unit = round(imgFin.shape[0] / 12)  # 1/12 картинки это ширина её рамки и половина ширины крайней линии
+find_points([unit * 6, unit * 3], unit, 1)
+if ((imgFin[points[0][0], points[0][1]] + imgFin[points[1][0], points[1][1]] +
+        imgFin[points[2][0], points[2][1]] + imgFin[points[3][0], points[3][1]] +
+        imgFin[points[4][0], points[4][1]]) / 5) < 125 : print('forward')
+a = (imgFin[points[0][0], points[0][1]] + imgFin[points[1][0], points[1][1]] +
+        imgFin[points[2][0], points[2][1]]) / 3
+print(a)
+
 img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
 cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
+cv2.circle(imgFin, (points[0][0], points[0][1]), 2, (0, 0, 0), 2)
+cv2.circle(imgFin, (points[1][0], points[1][1]), 2, (0, 0, 0), 2)
+cv2.circle(imgFin, (points[2][0], points[2][1]), 2, (0, 0, 0), 2)
+cv2.circle(imgFin, (points[3][0], points[3][1]), 2, (0, 0, 0), 2)
+cv2.circle(imgFin, (points[4][0], points[4][1]), 2, (0, 0, 0), 2)
 cv2.imshow("Image", img)
 cv2.imshow("Cropped", imgRotate)
 cv2.imshow("Fin", imgFin)
