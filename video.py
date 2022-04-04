@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import math
 
-cap = cv2.VideoCapture('resources/turnaround_trimmed_720.mp4')
+cap = cv2.VideoCapture('resources/forward_trimmed_720_3.mp4')
 frameCounter = 0
 minArea = 2300  # в этих рамках находится площадь искомого квадрата
 maxArea = 2850
@@ -13,6 +13,7 @@ direction = 0  # угол, кратный 90 градусам, определя�
 points = np.zeros((5, 2), dtype=int)  # здесь хранятся значения точек, проверяемых на цвет
 anglePrev = angleCurr = 0  # предыдущий и текущий угол поворота
 centerPrev = centerCurr = [[0, 0], [0, 0]]  # координаты предыдущего и текущего центра
+centerArray = [[0, 0]]
 
 # проверка на цвет нужна для распознавания кода на картинке
 
@@ -127,8 +128,12 @@ while cap.isOpened():
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
     cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
 
+    centerArray.append(centerCurr)
+    print(centerArray)
     if frameCounter > 2:
-        cv2.line(img, centerPrev, centerCurr, (0, 255, 0), 2)
+        for i in range(1, len(centerArray) - 1):
+            if centerArray[i] != centerArray[i + 1]:
+                cv2.line(img, centerArray[i], centerArray[i + 1], (0, 255, 0), 2)
 
     cv2.circle(imgFin, (points[0][0], points[0][1]), 2, (0, 0, 0), 2)
     cv2.circle(imgFin, (points[0][0], points[0][1]), 4, (255, 255, 255), 2)
