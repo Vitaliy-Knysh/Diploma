@@ -12,7 +12,7 @@ yMin = xMax = 0  # на самом деле так удобнее
 direction = 0  # угол, кратный 90 градусам, определяющий направление движения робота
 points = np.zeros((5, 2), dtype=int)  # здесь хранятся значения точек, проверяемых на цвет
 anglePrev = angleCurr = 0  # предыдущий и текущий угол поворота
-centerPrev = centerCurr = [[0, 0], [0, 0]]  # координаты предыдущего и текущего центра
+centerPrev = centerCurr = [0, 0]  # координаты предыдущего и текущего центра
 centerArray = [[0, 0]]
 
 # проверка на цвет нужна для распознавания кода на картинке
@@ -46,6 +46,7 @@ while cap.isOpened():
 
     if frameCounter > 2:
         centerPrev = centerCurr
+        anglePrev = angleCurr
 
     img = img[0:720, 160:1130]
     imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # преобразование картинки в бинарную
@@ -56,7 +57,7 @@ while cap.isOpened():
         area = cv2.contourArea(contours[i])  # поиск квадрата по его предполагаемой площади
         if minArea < area < maxArea:
             squareIndex = i
-            print(area)
+            #print(area)
             print('*'*100)
             if area < 2000:
                 print(' ALARM ' * 10)
@@ -104,38 +105,45 @@ while cap.isOpened():
                              ((approx[0][0][1] - approx[1][0][1]) ** 2)) // 2)
     # половина длины линии между противоположными углами
     center = [int(imgRotate.shape[0] / 2), int(imgRotate.shape[1] / 2)]
-    print('halfLine: ', halfLine)
-    print('center coordinates: ', center)
+    #print('halfLine: ', halfLine)
+    #print('center coordinates: ', center)
     imgFin = imgRotate[(center[1] - halfLine):(center[1] + halfLine), (center[0] - halfLine):(center[0] + halfLine)]
     if imgFin.shape[0] == 0 or imgFin.shape[1] == 0:
         imgFin = imgRotate  # при малых углах поворота одна из осей может обнулиться, исправить позже
-    print('shape of final image: ', imgFin.shape)
-    print('angle: ', angleDeg)
+    '''print('shape of final image: ', imgFin.shape)
+    print('angle: ', angleDeg)'''
     imgFin = cv2.resize(imgFin, (300, 300))
 
     unit = round(imgFin.shape[0] / 12)  # 1/12 картинки это ширина её рамки и половина ширины крайней линии
     find_points([unit * 6, unit * 3], unit, 1, 1)
     define_direction(imgFin, 1)  # определение направления поворота робота
-    '''find_points([unit * 9, unit * 6], unit, 1, 2)
+    find_points([unit * 9, unit * 6], unit, 1, 2)
     define_direction(imgFin, 2)
     find_points([unit * 6, unit * 9], unit, 1, 1)
     define_direction(imgFin, 3)
     find_points([unit * 3, unit * 6], unit, 1, 2)
-    define_direction(imgFin, 4)'''
+    define_direction(imgFin, 4)
     angleDeg += direction
-    print(angleDeg)
+    angleCurr = angleDeg
+    #print(angleDeg)
 
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
     cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
 
     centerArray.append(centerCurr)
-    print(centerArray)
     if frameCounter > 2:
         for i in range(1, len(centerArray) - 1):
             if centerArray[i] != centerArray[i + 1]:
                 cv2.line(img, centerArray[i], centerArray[i + 1], (0, 255, 0), 2)
+    speed = round(math.sqrt(((centerCurr[0] - centerPrev[0]) ** 2) +
+                  ((centerCurr[1] - centerPrev[1]) ** 2)))
+    if speed != 0:
+        print('speed: ', speed)
+    angularVel = angleCurr - anglePrev
+    if angularVel != 0:
+        print('angular velocity: ', angularVel)
 
-    cv2.circle(imgFin, (points[0][0], points[0][1]), 2, (0, 0, 0), 2)
+    cv2.circle(imgFin, (points[0][0], points[0][1]), 2, (0, 0, 0), 2)  # показывает проверяемые точки
     cv2.circle(imgFin, (points[0][0], points[0][1]), 4, (255, 255, 255), 2)
     cv2.circle(imgFin, (points[1][0], points[1][1]), 2, (0, 0, 0), 2)
     cv2.circle(imgFin, (points[1][0], points[1][1]), 4, (255, 255, 255), 2)
@@ -152,6 +160,6 @@ while cap.isOpened():
     #imshow("Cropped", imgRotate)
     cv2.imshow("Fin", imgFin)
     print('frame ', frameCounter)
-    cv2.waitKey(100)
+    cv2.waitKey(800)
     if cv2.waitKey(1) & 0xff == ord('q'):
         break
