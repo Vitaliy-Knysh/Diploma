@@ -2,10 +2,12 @@ import cv2
 import numpy as np
 import math
 
-cap = cv2.VideoCapture('resources/mark3_rotate.mp4')
+cap = cv2.VideoCapture('rtsp://admin:admin@192.168.0.92/stream1')
 frameCounter = 0
-minArea = 2300  # в этих рамках находится площадь искомого квадрата
-maxArea = 2850
+'''minArea = 2300  # в этих рамках находится площадь искомого квадрата
+maxArea = 2850'''
+minArea = 1900 #  для большой метки
+maxArea = 4600
 angleDeg = 0  # угол поворота в градусах, в пределах 0-90 градусов
 squareIndex = 0  # инекс контура квадрата в массиве контуров
 yMin = xMax = 0  # на самом деле так удобнее
