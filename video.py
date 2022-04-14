@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import math
 
-cap = cv2.VideoCapture('resources/forward_trimmed_720_3.mp4')
+cap = cv2.VideoCapture('resources/mark3_rotate.mp4')
 frameCounter = 0
 minArea = 2300  # в этих рамках находится площадь искомого квадрата
 maxArea = 2850
@@ -93,13 +93,14 @@ while cap.isOpened():
         yMin = topLine[0][1]  # определение максимального Х и минимального У
     else:
         yMin = topLine[1][1]
-    dx = xMax - center[0]
-    dy = center[1] - yMin
-    imgCrop = thresh[(center[1] - dy):(center[1] + dy), (center[0] - dx):(center[0] + dx)]  # первичная обрезка картинки
+    dy = center[1] - yMin  # метка квадратная, поэтому к центру по обеим осям прибавляется Ymax
+    imgCrop = thresh[(center[1] - dy):(center[1] + dy), (center[0] - dy):(center[0] + dy)]  # первичная обрезка картинки
     # чтобы не поворачивать всю
     matrix = cv2.getRotationMatrix2D(((imgCrop.shape[0] / 2), (imgCrop.shape[1] / 2)), angleDeg, 1)
     imgRotate = cv2.warpAffine(imgCrop, matrix,
                                (imgCrop.shape[1], imgCrop.shape[0]))  # поворот картинки на полученный угол
+
+    imgBackground = np.zeros_like(imgCrop)
 
     halfLine = int(math.sqrt(((approx[0][0][0] - approx[1][0][0]) ** 2) +
                              ((approx[0][0][1] - approx[1][0][1]) ** 2)) // 2)
@@ -157,9 +158,9 @@ while cap.isOpened():
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
     cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
     cv2.imshow("Image", img)
-    #imshow("Cropped", imgRotate)
+    cv2.imshow("Cropped", imgRotate)
     cv2.imshow("Fin", imgFin)
     print('frame ', frameCounter)
-    cv2.waitKey(800)
+    cv2.waitKey(50)
     if cv2.waitKey(1) & 0xff == ord('q'):
         break
