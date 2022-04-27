@@ -1,13 +1,16 @@
 import cv2
 import numpy as np
 import math
+import my_server
+import navigation
+import threading
 
-cap = cv2.VideoCapture('rtsp://admin:admin@192.168.0.92/stream1')
+cap = cv2.VideoCapture('rtsp://admin:admin@192.168.0.91/stream1')
 frameCounter = 0
 '''minArea = 2300  # в этих рамках находится площадь искомого квадрата
 maxArea = 2850'''
-minArea = 1900 #  для большой метки
-maxArea = 4600
+minArea = 2700
+maxArea = 6000
 angleDeg = 0  # угол поворота в градусах, в пределах 0-90 градусов
 squareIndex = 0  # инекс контура квадрата в массиве контуров
 yMin = xMax = 0  # на самом деле так удобнее
@@ -16,7 +19,7 @@ points = np.zeros((5, 2), dtype=int)  # здесь хранятся значен
 anglePrev = angleCurr = 0  # предыдущий и текущий угол поворота
 centerPrev = centerCurr = [0, 0]  # координаты предыдущего и текущего центра
 centerArray = [[0, 0]]
-
+targetPoint = [700, 350]
 # проверка на цвет нужна для распознавания кода на картинке
 
 def find_points(midPoint, distance, line_flag, direction):
@@ -30,6 +33,7 @@ def find_points(midPoint, distance, line_flag, direction):
     points[2] = [midPoint[0], midPoint[1]]
     points[3] = [midPoint[0] + deltaX, midPoint[1] + deltaY]
 # я не встречал помехи на картинке с камеры, но для порядка не помешает
+# кроме эффекта рыбьего глаза помех на картинке нет
 
 def define_direction(picture, dir):
     global direction
@@ -38,7 +42,11 @@ def define_direction(picture, dir):
         int(picture[points[4][1]][points[4][0]]) / 5) > 125:
         direction = 90 * (dir - 1)
 
-'''************************************************  ОСНОВНОЙ ЦИКЛ  ************************************************'''
+'''thread = threading.Thread(target=my_server.connect())
+thread.start()'''
+#***************************************************  ОСНОВНОЙ ЦИКЛ  ***************************************************
+#********************************************  НАЧАЛО БЛОКА ОБРАБОТКИ ВИДЕО  *******************************************
+
 while cap.isOpened():
     success, img = cap.read()
     if success == True:
@@ -55,17 +63,20 @@ while cap.isOpened():
     ret, thresh = cv2.threshold(imgGray, 140, 255, cv2.THRESH_BINARY)  # и поиск контуров
     contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
-    for i in range(len(contours)):
-        area = cv2.contourArea(contours[i])  # поиск квадрата по его предполагаемой площади
-        if minArea < area < maxArea:
-            squareIndex = i
-            #print(area)
-            print('*'*100)
-            if area < 2000:
-                print(' ALARM ' * 10)
+    squareIsFound = False
+    while not squareIsFound:
+        for i in range(len(contours)):
+            area = cv2.contourArea(contours[i])  # поиск квадрата по его предполагаемой площади
+            epsilon = 0.1 * cv2.arcLength(contours[i], True)  # определение угловых точек квадрата
+            approx = cv2.approxPolyDP(contours[i], epsilon, True)  # поиск квадрата по форме
+            if len(approx) == 4:
+                if minArea < area < maxArea:
+                    squareIndex = i
+                    print(area)
+                    print('*' * 100)
+                    squareIsFound = True
+                    break
 
-    epsilon = 0.1 * cv2.arcLength(contours[squareIndex], True)  # определение угловых точек квадрата
-    approx = cv2.approxPolyDP(contours[squareIndex], epsilon, True)
     topLine = [[approx[0][0][0], approx[0][0][1]], [approx[1][0][0], approx[1][0][1]]]
     for i in 2, 3:
         if approx[i][0][1] < topLine[1][1]:  # определение левого верхнего угла
@@ -145,7 +156,15 @@ while cap.isOpened():
     angularVel = angleCurr - anglePrev
     if angularVel != 0:
         print('angular velocity: ', angularVel)
+#********************************************  КОНЕЦ БЛОКА ОБРАБОТКИ ВИДЕО  ********************************************
+#***********************************************  НАЧАЛО БЛОКА НАВИГАЦИИ  **********************************************
+    if navigation.proxCheck(centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1]) == False:
+        angleDiff = navigation.angleDiff(angleCurr, centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1])
+        my_server.serverReadyFlag = True
+        my_server.command = navigation.moveSimple(angleDiff)
 
+#************************************************  КОНЕЦ БЛОКА НАВИГАЦИИ  **********************************************
+#***********************************************  НАЧАЛО БЛОКА ОТРИСОВКИ  **********************************************
     cv2.circle(imgFin, (points[0][0], points[0][1]), 2, (0, 0, 0), 2)  # показывает проверяемые точки
     cv2.circle(imgFin, (points[0][0], points[0][1]), 4, (255, 255, 255), 2)
     cv2.circle(imgFin, (points[1][0], points[1][1]), 2, (0, 0, 0), 2)
@@ -158,11 +177,12 @@ while cap.isOpened():
     cv2.circle(imgFin, (points[4][0], points[4][1]), 4, (255, 255, 255), 2)
 
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
+    cv2.line(img, centerCurr, targetPoint, (255, 0, 255), 2)
     cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
     cv2.imshow("Image", img)
     cv2.imshow("Cropped", imgRotate)
     cv2.imshow("Fin", imgFin)
     print('frame ', frameCounter)
-    cv2.waitKey(50)
+#************************************************  КОНЕЦ БЛОКА ОТРИСОВКИ  **********************************************
     if cv2.waitKey(1) & 0xff == ord('q'):
         break
