@@ -1,13 +1,13 @@
 import cv2
 import numpy as np
 import math
-import my_server
-import navigation
-import threading
+#import my_server
+#import navigation
+#import threading
 
 cap = cv2.VideoCapture('rtsp://admin:admin@192.168.0.91/stream1')
 frameCounter = 0
-minArea = 1500 # в этих рамках находится площадь искомого квадрата
+minArea = 1500  # в этих рамках находится площадь искомого квадрата
 maxArea = 3000
 angleDeg = 0  # угол поворота в градусах, в пределах 0-90 градусов
 squareIndex = 0  # инекс контура квадрата в массиве контуров
@@ -46,11 +46,11 @@ def define_direction(picture, dir):
     global direction
     if (int(picture[points[0][1]][points[0][0]]) + int(picture[points[1][1]][points[1][0]]) +
         int(picture[points[2][1]][points[2][0]]) + int(picture[points[3][1]][points[3][0]]) +
-        int(picture[points[4][1]][points[4][0]]) / 5) > 125:
+        int(picture[points[4][1]][points[4][0]]) / 5) < 125:
         direction = 90 * (dir - 1)
 
-thread = threading.Thread(target=my_server.start, args=()) #  старт сервера
-thread.start()
+'''thread = threading.Thread(target=my_server.start, args=()) #  старт сервера
+thread.start()'''
 #***************************************************  ОСНОВНОЙ ЦИКЛ  ***************************************************
 #********************************************  НАЧАЛО БЛОКА ОБРАБОТКИ ВИДЕО  *******************************************
 while cap.isOpened():
@@ -138,7 +138,7 @@ while cap.isOpened():
     angleCurr = angleDeg
     #print(angleDeg)
     if angleCurr < 0:
-        angleCurr -= 360
+        angleCurr += 360
 
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
     cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
@@ -157,12 +157,12 @@ while cap.isOpened():
         print('angular velocity: ', angularVel)
 #********************************************  КОНЕЦ БЛОКА ОБРАБОТКИ ВИДЕО  ********************************************
 #***********************************************  НАЧАЛО БЛОКА НАВИГАЦИИ  **********************************************
-    if navigation.proxCheck(centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1]) == False:
+    '''if navigation.proxCheck(centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1]) == False:
         print('proximity check not passed')
         dir, angleDiff = navigation.angleDiff(angleCurr, centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1])
         print('angle of difference: ', angleDiff)
         my_server.serverReadyFlag = True
-        my_server.command = navigation.moveSimple(angleDiff)
+        my_server.command = navigation.moveSimple(angleDiff)'''
 
 #************************************************  КОНЕЦ БЛОКА НАВИГАЦИИ  **********************************************
 #***********************************************  НАЧАЛО БЛОКА ОТРИСОВКИ  **********************************************
@@ -176,6 +176,10 @@ while cap.isOpened():
     cv2.circle(imgFin, (points[3][0], points[3][1]), 4, (255, 255, 255), 2)
     cv2.circle(imgFin, (points[4][0], points[4][1]), 2, (0, 0, 0), 2)
     cv2.circle(imgFin, (points[4][0], points[4][1]), 4, (255, 255, 255), 2)
+
+    cv2.putText(img, str(angleCurr), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+    cv2.putText(img, str(angleCurr), (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+
 
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
     cv2.line(img, centerCurr, targetPoint, (255, 0, 255), 2)
