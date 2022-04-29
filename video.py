@@ -7,10 +7,8 @@ import threading
 
 cap = cv2.VideoCapture('rtsp://admin:admin@192.168.0.91/stream1')
 frameCounter = 0
-'''minArea = 2300  # в этих рамках находится площадь искомого квадрата
-maxArea = 2850'''
-minArea = 2700
-maxArea = 6000
+minArea = 1500 # в этих рамках находится площадь искомого квадрата
+maxArea = 3000
 angleDeg = 0  # угол поворота в градусах, в пределах 0-90 градусов
 squareIndex = 0  # инекс контура квадрата в массиве контуров
 yMin = xMax = 0  # на самом деле так удобнее
@@ -21,6 +19,15 @@ centerPrev = centerCurr = [0, 0]  # координаты предыдущего 
 centerArray = [[0, 0]]
 targetPoint = [700, 350]
 # проверка на цвет нужна для распознавания кода на картинке
+Mtx = np.fromfile('resources/Calibrate.npy')
+camera_matrix = np.array([[round(Mtx[0],2), round(Mtx[1],2), round(Mtx[2],2)], [round(Mtx[3],2), round(Mtx[4],2), round(Mtx[5],2)], [round(Mtx[6],2), round(Mtx[7],2), round(Mtx[8],2)]])
+dist_coefs = np.array([[round(Mtx[9],2), round(Mtx[10],2), round(Mtx[11],2),round(Mtx[12],2),round(Mtx[13],2)]])
+size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+        int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+
+newcameramtx, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coefs, (size[0], size[1]), 1, (size[0], size[1]))
+x, y, w, h = roi
+M = cv2.getRotationMatrix2D((size[0]/2,size[1]/2),5,1)
 
 def find_points(midPoint, distance, line_flag, direction):
     deltaX = deltaY = distance // 2  # эта функция вычисляет координаты точек слева и справа от исходной
@@ -42,40 +49,30 @@ def define_direction(picture, dir):
         int(picture[points[4][1]][points[4][0]]) / 5) > 125:
         direction = 90 * (dir - 1)
 
-'''thread = threading.Thread(target=my_server.connect())
-thread.start()'''
+thread = threading.Thread(target=my_server.start, args=()) #  старт сервера
+thread.start()
 #***************************************************  ОСНОВНОЙ ЦИКЛ  ***************************************************
 #********************************************  НАЧАЛО БЛОКА ОБРАБОТКИ ВИДЕО  *******************************************
-
 while cap.isOpened():
     success, img = cap.read()
-    if success == True:
-        frameCounter += 1
-    elif success == False:
-        print('frame not ready')
+    img = cv2.undistort(img, camera_matrix, dist_coefs, None, newcameramtx)
+    img = img[20:700, 170:1120]
 
-    if frameCounter > 2:
-        centerPrev = centerCurr
-        anglePrev = angleCurr
-
-    img = img[0:720, 160:1130]
     imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # преобразование картинки в бинарную
-    ret, thresh = cv2.threshold(imgGray, 140, 255, cv2.THRESH_BINARY)  # и поиск контуров
+    ret, thresh = cv2.threshold(imgGray, 200, 255, cv2.THRESH_BINARY)  # и поиск контуров
     contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
-    squareIsFound = False
-    while not squareIsFound:
-        for i in range(len(contours)):
-            area = cv2.contourArea(contours[i])  # поиск квадрата по его предполагаемой площади
-            epsilon = 0.1 * cv2.arcLength(contours[i], True)  # определение угловых точек квадрата
-            approx = cv2.approxPolyDP(contours[i], epsilon, True)  # поиск квадрата по форме
-            if len(approx) == 4:
-                if minArea < area < maxArea:
-                    squareIndex = i
-                    print(area)
-                    print('*' * 100)
-                    squareIsFound = True
-                    break
+    for i in range(len(contours)):
+        area = cv2.contourArea(contours[i])  # поиск квадрата по его предполагаемой площади
+        epsilon = 0.1 * cv2.arcLength(contours[i], True)  # определение угловых точек квадрата
+        approx = cv2.approxPolyDP(contours[i], epsilon, True)  # поиск квадрата по форме
+        if len(approx) == 4:
+            if minArea < area < maxArea:
+                squareIndex = i
+                print(area)
+                print(approx)
+                print('*' * 100)
+                break
 
     topLine = [[approx[0][0][0], approx[0][0][1]], [approx[1][0][0], approx[1][0][1]]]
     for i in 2, 3:
@@ -140,6 +137,8 @@ while cap.isOpened():
     angleDeg += direction
     angleCurr = angleDeg
     #print(angleDeg)
+    if angleCurr < 0:
+        angleCurr -= 360
 
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
     cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
@@ -159,7 +158,9 @@ while cap.isOpened():
 #********************************************  КОНЕЦ БЛОКА ОБРАБОТКИ ВИДЕО  ********************************************
 #***********************************************  НАЧАЛО БЛОКА НАВИГАЦИИ  **********************************************
     if navigation.proxCheck(centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1]) == False:
-        angleDiff = navigation.angleDiff(angleCurr, centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1])
+        print('proximity check not passed')
+        dir, angleDiff = navigation.angleDiff(angleCurr, centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1])
+        print('angle of difference: ', angleDiff)
         my_server.serverReadyFlag = True
         my_server.command = navigation.moveSimple(angleDiff)
 
