@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
 import math
-#import my_server
-#import navigation
-#import threading
+import my_server
+import navigation
+import threading
 
 cap = cv2.VideoCapture('rtsp://admin:admin@192.168.0.91/stream1')
 frameCounter = 0
@@ -17,7 +17,8 @@ points = np.zeros((5, 2), dtype=int)  # здесь хранятся значен
 anglePrev = angleCurr = 0  # предыдущий и текущий угол поворота
 centerPrev = centerCurr = [0, 0]  # координаты предыдущего и текущего центра
 centerArray = [[0, 0]]
-targetPoint = [700, 350]
+trajectory = [[700, 450], [400, 150], [200, 400]]  #заданная вручную траектория
+targetPoint = [700, 450, 0]  # текущая целевая точка, последний элемент - счётчик пройденных точек
 # проверка на цвет нужна для распознавания кода на картинке
 Mtx = np.fromfile('resources/Calibrate.npy')
 camera_matrix = np.array([[round(Mtx[0],2), round(Mtx[1],2), round(Mtx[2],2)], [round(Mtx[3],2), round(Mtx[4],2), round(Mtx[5],2)], [round(Mtx[6],2), round(Mtx[7],2), round(Mtx[8],2)]])
@@ -49,11 +50,14 @@ def define_direction(picture, dir):
         int(picture[points[4][1]][points[4][0]]) / 5) < 125:
         direction = 90 * (dir - 1)
 
-'''thread = threading.Thread(target=my_server.start, args=()) #  старт сервера
-thread.start()'''
+thread = threading.Thread(target=my_server.start, args=()) #  старт сервера
+thread.start()
 #***************************************************  ОСНОВНОЙ ЦИКЛ  ***************************************************
 #********************************************  НАЧАЛО БЛОКА ОБРАБОТКИ ВИДЕО  *******************************************
 while cap.isOpened():
+    centerPrev = centerCurr
+    anglePrev = angleCurr
+
     success, img = cap.read()
     img = cv2.undistort(img, camera_matrix, dist_coefs, None, newcameramtx)
     img = img[20:700, 170:1120]
@@ -148,21 +152,31 @@ while cap.isOpened():
         for i in range(1, len(centerArray) - 1):
             if centerArray[i] != centerArray[i + 1]:
                 cv2.line(img, centerArray[i], centerArray[i + 1], (0, 255, 0), 2)
+
     speed = round(math.sqrt(((centerCurr[0] - centerPrev[0]) ** 2) +
                   ((centerCurr[1] - centerPrev[1]) ** 2)))
-    if speed != 0:
-        print('speed: ', speed)
+
+    angleAdd = angleCurr - 180
     angularVel = angleCurr - anglePrev
-    if angularVel != 0:
-        print('angular velocity: ', angularVel)
+
 #********************************************  КОНЕЦ БЛОКА ОБРАБОТКИ ВИДЕО  ********************************************
 #***********************************************  НАЧАЛО БЛОКА НАВИГАЦИИ  **********************************************
-    '''if navigation.proxCheck(centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1]) == False:
+    if navigation.proxCheck(centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1]) == False:
         print('proximity check not passed')
-        dir, angleDiff = navigation.angleDiff(angleCurr, centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1])
+        angleDiff = navigation.angleDiff(angleCurr, centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1])
         print('angle of difference: ', angleDiff)
         my_server.serverReadyFlag = True
-        my_server.command = navigation.moveSimple(angleDiff)'''
+        my_server.command = navigation.moveSimple(angleDiff)
+
+    else:
+        if targetPoint[2] == 2:
+            targetPoint[0] = trajectory[0][0]
+            targetPoint[1] = trajectory[0][1]
+            targetPoint[2] = 0
+        else:
+            targetPoint[0] = trajectory[targetPoint[2] + 1][0]
+            targetPoint[1] = trajectory[targetPoint[2] + 1][1]
+            targetPoint[2] += 1
 
 #************************************************  КОНЕЦ БЛОКА НАВИГАЦИИ  **********************************************
 #***********************************************  НАЧАЛО БЛОКА ОТРИСОВКИ  **********************************************
@@ -177,17 +191,21 @@ while cap.isOpened():
     cv2.circle(imgFin, (points[4][0], points[4][1]), 2, (0, 0, 0), 2)
     cv2.circle(imgFin, (points[4][0], points[4][1]), 4, (255, 255, 255), 2)
 
-    cv2.putText(img, str(angleCurr), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-    cv2.putText(img, str(angleCurr), (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+    cv2.putText(img, str(speed), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+    # показывает угол рассогласования
 
+    img = cv2.line(img, trajectory[0], trajectory[1], (255, 255, 0), 2)  # отрисовка траектории вручную)
+    img = cv2.line(img, trajectory[1], trajectory[2], (255, 255, 0), 2)  # потом сделать для любого количества точек
+    img = cv2.line(img, trajectory[2], trajectory[0], (255, 255, 0), 2)
 
     img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
-    cv2.line(img, centerCurr, targetPoint, (255, 0, 255), 2)
+    cv2.line(img, centerCurr, (targetPoint[0], targetPoint[1]), (255, 0, 255), 2)
     cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
     cv2.imshow("Image", img)
     cv2.imshow("Cropped", imgRotate)
     cv2.imshow("Fin", imgFin)
     print('frame ', frameCounter)
+    frameCounter += 1
 #************************************************  КОНЕЦ БЛОКА ОТРИСОВКИ  **********************************************
     if cv2.waitKey(1) & 0xff == ord('q'):
         break
