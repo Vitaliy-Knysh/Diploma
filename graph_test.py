@@ -9,20 +9,18 @@ robotRaduis = 30  # радиус робота, добавляется к коо�
 map = 255 * np.ones(shape=[600, 600, 3], dtype=np.uint8)
 tilesX = map.shape[0] // tileSize
 tilesY = map.shape[1] // tileSize  # общее число вершин по осям
-graphCoord = [[[0] * 2 for i in range(tilesX)]for j in range(tilesY)]  # список с координатами каждого узла графа
-graphPath = [[0 * 1 for i in range(tilesX)]for j in range(tilesY)]  # список с путем до каждой точки в графе
-graphList = [[[0] * 1 for k in range(tilesX)]for m in range(tilesY)]  # список с вершинами графа и их связями
+graphCoord = [[[0] * 2 for i in range(tilesX)] for j in range(tilesY)]  # список с координатами каждого узла графа
+graphPath = [[0 * 1 for i in range(tilesX)] for j in range(tilesY)]  # список с путем до каждой точки в графе
+graphList = [[[0] * 1 for k in range(tilesX)] for m in range(tilesY)]  # список с вершинами графа и их связями
 # я мог бы объединить эти три списка, но так проще разобраться в них. ПО-ХОРОШЕМУ ЗДЕСЬ НУЖЕН КЛАСС
 bigNum = max(tilesY, tilesX) + 10  # это число используется чтобы обозначить пройденную связь
-                                    # или связь, заблокированную препятствием
+# или связь, заблокированную препятствием
 obstacleLine = [[300, 55], [100, 400]]
 stepCounter = 1  # счетчик для функции нахождения пути. Функция рекурсивная, так что я перестрахуюсь
-
 
 for x in range(tilesX):  # присвоение координат вершинам графа
     for y in range(tilesY):
         graphCoord[x][y] = (50 + tileSize * x, 50 + tileSize * y)
-
 
 for x in range(tilesX):  # определение возможных связей без учёта препятствий
     for y in range(tilesY):
@@ -35,9 +33,9 @@ for x in range(tilesX):  # определение возможных связе�
                 connections.append((x - 1, y + 1))
 
         if y > 0:
-                connections.append((x, y - 1))
+            connections.append((x, y - 1))
         if y < (tilesY - 1):
-                connections.append((x, y + 1))
+            connections.append((x, y + 1))
 
         if x < (tilesX - 1):
             connections.append((x + 1, y))
@@ -50,15 +48,15 @@ for x in range(tilesX):  # определение возможных связе�
             line1 = (graphCoord[x][y], graphCoord[connections[i][0]][connections[i][1]])
             line2 = obstacleLine
             xCross = yCross = 0
-    
+
             a1 = line1[0][1] - line1[1][1]  # коэфициенты уравнений прямых, проверяемых на пересечение
             b1 = line1[1][0] - line1[0][0]
             c1 = (line1[0][0] * line1[1][1]) - (line1[1][0] * line1[0][1])
-    
+
             a2 = line2[0][1] - line2[1][1]
             b2 = line2[1][0] - line2[0][0]
             c2 = (line2[0][0] * line2[1][1]) - (line2[1][0] * line2[0][1])
-    
+
             dMain = a1 * b2 - a2 * b1  # главный определитель
             if dMain != 0:
                 xCross = -(c1 * b2 - c2 * b1) / dMain  # dx/d и dy/d
@@ -87,7 +85,7 @@ connArr = graphList[startPoint[0]][startPoint[1]]
 newConnList = []
 # ------------------------------------------ПРОХОД ВОЛНЫ В СТОРОНУ ЦЕЛИ-------------------------------------------------
 while graphPath[endPoint[0]][endPoint[1]] == 0:
-      # список со связями для следующей волны
+    # список со связями для следующей волны
     checkList = []  # не отфильтрованный список со связями для следующей волны
     if stepCounter == 1:  # в начальный момент времени необходимо вручную задать связи
         newConnList = graphList[startPoint[0]][startPoint[1]]
@@ -105,18 +103,23 @@ while graphPath[endPoint[0]][endPoint[1]] == 0:
     print('-------------------------PATH MATRIX-------------------------')
     for i in graphPath:
         print(i)
-graphPath[startPoint[0]][startPoint[1]] = 0
 
-'''for conn in newConnList:
-    if graphPath[conn[0]][conn[1]] == 0 or graphPath[conn[0]][conn[1]] > stepCounter:
-        graphPath[conn[0]][conn[1]] = stepCounter'''
+cv2.circle(map, graphCoord[startPoint[0]][startPoint[1]], 8, (255, 0, 255), 8)
+cv2.circle(map, graphCoord[endPoint[0]][endPoint[1]], 8, (255, 0, 255), 8)
+
+for x in range(tilesX):  # присвоение ненужным вершинам очень большого индекса
+    for y in range(tilesY):
+        if graphPath[y][x] == 0:
+            graphPath[y][x] = 10
+
+graphPath[startPoint[0]][startPoint[1]] = 0
+for x in range(tilesX):  # вывод на экран номеров связей
+    for y in range(tilesY):
+        cv2.putText(map, str(graphPath[y][x]), graphCoord[y][x], cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+
 
 cv2.line(map, obstacleLine[0], obstacleLine[1], (0, 0, 255), 2)
 
-'''cv2.line(map, graphCoord[1][1], graphCoord[1][0], (0, 0, 255), 2)
-cv2.line(map, graphCoord[2][1], graphCoord[2][0], (0, 0, 255), 2)
-cv2.circle(map, graphCoord[1][0], 10, (0, 0, 255), 2)
-cv2.circle(map, graphCoord[2][0], 10, (0, 0, 255), 2)'''
 print('-------------------------PATH MATRIX-------------------------')
 for i in graphPath:
     print(i)
