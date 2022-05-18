@@ -1,229 +1,163 @@
 import cv2
 import numpy as np
-import math
-import my_server
-import navigation
-import threading
 import time
+import math
 
-cap = cv2.VideoCapture('rtsp://admin:admin@192.168.0.91/stream1')
-frameCounter = 0
-minArea = 1500  # в этих рамках находится площадь искомого квадрата
-maxArea = 3000
-angleDeg = 0  # угол поворота в градусах, в пределах 0-90 градусов
-squareIndex = 0  # инекс контура квадрата в массиве контуров
-yMin = xMax = 0  # на самом деле так удобнее
-direction = 0  # угол, кратный 90 градусам, определяющий направление движения робота
-points = np.zeros((5, 2), dtype=int)  # здесь хранятся значения точек, проверяемых на цвет
-anglePrev = angleCurr = 0  # предыдущий и текущий угол поворота
-centerPrev = centerCurr = [0, 0]  # координаты предыдущего и текущего центра
-centerArray = [[0, 0]]
-trajectory = [[700, 450], [400, 150], [200, 400]]  #заданная вручную траектория
-targetPoint = [700, 450, 0]  # текущая целевая точка, последний элемент - счётчик пройденных точек
-# проверка на цвет нужна для распознавания кода на картинке
-Mtx = np.fromfile('resources/Calibrate.npy')
-camera_matrix = np.array([[round(Mtx[0],2), round(Mtx[1],2), round(Mtx[2],2)], [round(Mtx[3],2), round(Mtx[4],2), round(Mtx[5],2)], [round(Mtx[6],2), round(Mtx[7],2), round(Mtx[8],2)]])
-dist_coefs = np.array([[round(Mtx[9],2), round(Mtx[10],2), round(Mtx[11],2),round(Mtx[12],2),round(Mtx[13],2)]])
-size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-        int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-markArray = [[30, 210], [30, 270], [210, 210]]  # массив с возможными положениями квадратов для распознавания
-imgFinPoints = np.float32([[0, 0], [0, 50], [50, 50], [50, 0]])  # угловые точки для исправления искажения
-
-newcameramtx, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coefs, (size[0], size[1]), 1, (size[0], size[1]))
-x, y, w, h = roi
-M = cv2.getRotationMatrix2D((size[0]/2,size[1]/2),5,1)
-
-def find_points(midPoint, distance, line_flag, direction):
-    deltaX = deltaY = distance // 2  # эта функция вычисляет координаты точек слева и справа от исходной
-    if line_flag == 1:
-        if direction == 1 or direction == 3: deltaX = 0
-        elif direction == 2 or direction == 4: deltaY = 0
-        points[0] = [midPoint[0] - (2 * deltaX), midPoint[1] - (2 * deltaY)]
-        points[4] = [midPoint[0] + (2 * deltaX), midPoint[1] + (2 * deltaY)]
-    points[1] = [midPoint[0] - deltaX, midPoint[1] - deltaY]  # для линии используем 5 точек, для квадрата используем 3
-    points[2] = [midPoint[0], midPoint[1]]
-    points[3] = [midPoint[0] + deltaX, midPoint[1] + deltaY]
-# я не встречал помехи на картинке с камеры, но для порядка не помешает
-# кроме эффекта рыбьего глаза помех на картинке нет
-
-def define_direction(picture, dir):
-    global direction
-    if (int(picture[points[0][1]][points[0][0]]) + int(picture[points[1][1]][points[1][0]]) +
-        int(picture[points[2][1]][points[2][0]]) + int(picture[points[3][1]][points[3][0]]) +
-        int(picture[points[4][1]][points[4][0]]) / 5) < 125:
-        direction = 90 * (dir - 1)
-
-#def define_mark(picture, dir):
+width = 800
+height = 550
+startPoint = (0, 1)  # здесь находится робот в начале пути
+endPoint = (3, 1)
+tileSize = 120  # расстояние между вершинами по горизонтали и вертикали  в пикселях
+robotRaduis = 30  # радиус робота, добавляется к координатам препятствия для нормального маневрирования
+map = 255 * np.ones(shape=[height, width, 3], dtype=np.uint8)
+tilesX = width // tileSize
+tilesY = height // tileSize  # общее число вершин по осям
+graphCoord = [[[0] * 2 for i in range(tilesX)]for j in range(tilesY)]  # список с координатами каждого узла графа
+graphPath = [[0 * 1 for i in range(tilesX)]for j in range(tilesY)]  # список с путем до каждой точки в графе
+graphList = [[[0] * 1 for k in range(tilesX)]for m in range(tilesY)]  # список с вершинами графа и их связями
+# я мог бы объединить эти три списка, но так проще разобраться в них. ПО-ХОРОШЕМУ ЗДЕСЬ НУЖЕН КЛАСС
+pathFin = []  # список, содержащий путь через граф
+bigNum = max(tilesY, tilesX) + 10  # это число используется чтобы обозначить пройденную связь
+                                    # или связь, заблокированную препятствием
+obstacleLine = [[200, 300], [100, 55]]
+stepCounter = 1  # счетчик для функции нахождения пути. Функция рекурсивная, так что я перестрахуюсь
 
 
-thread = threading.Thread(target=my_server.start, args=()) #  старт сервера
-thread.start()
-#***************************************************  ОСНОВНОЙ ЦИКЛ  ***************************************************
-#********************************************  НАЧАЛО БЛОКА ОБРАБОТКИ ВИДЕО  *******************************************
-while cap.isOpened():
+for x in range(tilesX):  # присвоение координат вершинам графа
+    for y in range(tilesY):
+        graphCoord[y][x] = (40 + (tileSize * x), 40 + (tileSize * y))
+print(graphCoord)
+for x in range(tilesX):  # определение возможных связей без учёта препятствий
+    for y in range(tilesY):
+        connections = []
+        if x > 0:
+            connections.append((x - 1, y))
+            if y > 0:
+                connections.append((x - 1, y - 1))
+            if y < (tilesY - 1):
+                connections.append((x - 1, y + 1))
 
-    centerPrev = centerCurr
-    anglePrev = angleCurr
+        if y > 0:
+                connections.append((x, y - 1))
+        if y < (tilesY - 1):
+                connections.append((x, y + 1))
 
-    success, img = cap.read()
-    img = cv2.undistort(img, camera_matrix, dist_coefs, None, newcameramtx)
-    img = img[20:700, 170:1120]
+        if x < (tilesX - 1):
+            connections.append((x + 1, y))
+            if y < (tilesY - 1):
+                connections.append((x + 1, y + 1))
+            if y > 0:
+                connections.append((x + 1, y - 1))
 
-    imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # преобразование картинки в бинарную
-    ret, thresh = cv2.threshold(imgGray, 200, 255, cv2.THRESH_BINARY)  # и поиск контуров
-    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+        i = 0
+        while i < len(connections):
+            line1 = (graphCoord[y][x], graphCoord[connections[i][1]][connections[i][0]])
+            line2 = obstacleLine
+            xCross = yCross = 0
+    
+            a1 = line1[0][1] - line1[1][1]  # коэфициенты уравнений прямых, проверяемых на пересечение
+            b1 = line1[1][0] - line1[0][0]
+            c1 = (line1[0][0] * line1[1][1]) - (line1[1][0] * line1[0][1])
+    
+            a2 = line2[0][1] - line2[1][1]
+            b2 = line2[1][0] - line2[0][0]
+            c2 = (line2[0][0] * line2[1][1]) - (line2[1][0] * line2[0][1])
+    
+            dMain = a1 * b2 - a2 * b1  # главный определитель
+            if dMain != 0:
+                xCross = -(c1 * b2 - c2 * b1) / dMain  # dx/d и dy/d
+                yCross = -(a1 * c2 - a2 * c1) / dMain  # это точка пересечения прямых
+                # принадлежит ли точка пересечения отрезку?
+                if min(line1[0][0], line1[1][0]) <= xCross <= max(line1[0][0], line1[1][0]) and \
+                        min(line2[0][0], line2[1][0]) <= xCross <= max(line2[0][0], line2[1][0]) and \
+                        min(line1[0][1], line1[1][1]) <= yCross <= max(line1[0][1], line1[1][1]) and \
+                        min(line2[0][1], line2[1][1]) <= yCross <= max(line2[0][1], line2[1][1]):
+                    connections.pop(i)
+                    i -= 1
+            i += 1
 
-    for i in range(len(contours)):
-        area = cv2.contourArea(contours[i])  # поиск квадрата по его предполагаемой площади
-        epsilon = 0.1 * cv2.arcLength(contours[i], True)  # определение угловых точек квадрата
-        approx = cv2.approxPolyDP(contours[i], epsilon, True)  # поиск квадрата по форме
-        if len(approx) == 4:
-            if minArea < area < maxArea:
-                squareIndex = i
-                print(area)
-                print(approx)
-                print('*' * 100)
-                break
+        graphList[y][x] = connections
 
-    topLine = [approx[0][0], approx[1][0]]
-    for i in 2, 3:
-        if approx[i][0][1] < topLine[1][1]:  # определение левого верхнего угла
-            topLine[1][0] = approx[i][0][0]
-            topLine[1][1] = approx[i][0][1]
-            if approx[i][0][1] < topLine[0][1]:
-                topLine[0][0] = approx[i][0][0]
-                topLine[0][1] = approx[i][0][1]
+for i in graphCoord:  # вывод на экран вершин графа
+    for j in range(len(i)):
+        cv2.circle(map, i[j], 2, (255, 0, 0), 2)
 
-    if topLine[0][0] > topLine[1][0]:
-        topLine[0][0], topLine[1][0] = topLine[1][0], topLine[0][0]
-        topLine[0][1], topLine[1][1] = topLine[1][1], topLine[0][1]
+for x in range(tilesX):  # вывод на экран всех возможных связей в графе
+    for y in range(tilesY):
+        for conn in graphList[y][x]:
+            cv2.line(map, graphCoord[y][x], graphCoord[conn[1]][conn[0]], (255, 0, 0), 1)
 
-    if topLine[1][0] == topLine[0][0]: angleDeg = 0  # заплатка: иногда верхняя линия определяется как вертикальная
-    else:
-        angleDeg = round(math.atan((topLine[1][1] - topLine[0][1]) /  # определение угла наклона квадрата в градусах
-                    (topLine[1][0] - topLine[0][0])) * 57.2958)  # угол определяется в рамках от 0 до 90 градусов
+connArr = graphList[startPoint[1]][startPoint[0]]
+newConnList = []
+#-----------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------ПРОХОД ВОЛНЫ ИЗ НАЧАЛА В КОНЕЦ----------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
+while graphPath[endPoint[1]][endPoint[0]] == 0:
+      # список со связями для следующей волны
+    checkList = []  # не отфильтрованный список со связями для следующей волны
+    if stepCounter == 1:  # в начальный момент времени необходимо вручную задать связи
+        newConnList = graphList[startPoint[1]][startPoint[0]]
+    for conn in newConnList:
+        print(conn)
+        if graphPath[conn[1]][conn[0]] == 0 or graphPath[conn[1]][conn[0]] > stepCounter:
+            graphPath[conn[1]][conn[0]] = stepCounter
+            for singleConn in graphList[conn[1]][conn[0]]:  # добавление всех новых связей в нефильтрованный список
+                checkList.append(singleConn)
+    newConnList = []
+    for check in checkList:  # исключение повторяющихся связей
+        if check not in newConnList:
+            newConnList.append(check)
+    stepCounter += 1
+'''    print('-------------------------PATH MATRIX-------------------------')
+    for i in graphPath:
+        print(i)'''
 
-    centerCurr = center = [int((approx[0][0][0] + approx[2][0][0]) / 2), int((approx[2][0][1] + approx[0][0][1]) / 2)]
-    # определение центра квадрата(середина линии между 2 противоположными углами)
+cv2.circle(map, graphCoord[startPoint[1]][startPoint[0]], 8, (255, 0, 255), 8)
+cv2.circle(map, graphCoord[endPoint[1]][endPoint[0]], 8, (255, 0, 255), 8)
 
-    for i in range(4):
-        if approx[i][0][0] > xMax:
-            xMax = approx[i][0][0]
+for x in range(tilesX):  # присвоение ненужным вершинам очень большого индекса
+    for y in range(tilesY):
+        if graphPath[y][x] == 0:
+            graphPath[y][x] = 10
+#-----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------ПРОХОД ВОЛНЫ ИЗ КОНЦА В НАЧАЛО-----------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
+print('-'*100)
+possibleSteps = []  # возможные шаги в узел с весом на 1 меньше текущего
+currentPoint = endPoint  # текущая точка
+while len(pathFin) < graphPath[endPoint[1]][endPoint[0]]:
+    pathFin.append(currentPoint)
+    for conn in graphList[currentPoint[1]][currentPoint[0]]:
+        if graphPath[conn[1]][conn[0]] == (graphPath[currentPoint[1]][currentPoint[0]] - 1):
+            possibleSteps.append(conn)
+    distance = []  # список с расстоянием от узла до цели
+    for conn in possibleSteps:
+        distance.append(math.sqrt(((conn[0] - startPoint[0]) ** 2) + ((conn[1] - startPoint[1]) ** 2)))
+    currentPoint = possibleSteps[distance.index(min(distance))]
+pathFin.append(startPoint)
+print(pathFin)
 
-    if topLine[0][1] < topLine[1][1]:
-        yMin = topLine[0][1]  # определение максимального Х и минимального У
-    else:
-        yMin = topLine[1][1]
-    dy = center[1] - yMin  # метка квадратная, поэтому к центру по обеим осям прибавляется Ymax
-    imgCrop = thresh[(center[1] - dy):(center[1] + dy), (center[0] - dy):(center[0] + dy)]  # первичная обрезка картинки
-    # чтобы не поворачивать всю
-    matrix = cv2.getRotationMatrix2D(((imgCrop.shape[0] / 2), (imgCrop.shape[1] / 2)), angleDeg, 1)
-    imgRotate = cv2.warpAffine(imgCrop, matrix,
-                               (imgCrop.shape[1], imgCrop.shape[0]))  # поворот картинки на полученный угол
+#-----------------------------------------------------------------------------------------------------------------------
+#---------------------------------------------ОТРИСОВКА ИЗОБРАЖЕНИЯ----------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
+graphPath[startPoint[1]][startPoint[0]] = 0
+for x in range(tilesX):  # вывод на экран номеров связей
+    for y in range(tilesY):
+        cv2.putText(map, str(graphPath[y][x]), graphCoord[y][x], cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
 
-    halfLine = int(math.sqrt(((approx[0][0][0] - approx[1][0][0]) ** 2) +
-                             ((approx[0][0][1] - approx[1][0][1]) ** 2)) // 2)
-    # половина длины линии между противоположными углами
+for i in range(len(pathFin) - 1):
+    cv2.line(map, graphCoord[pathFin[i][1]][pathFin[i][0]],
+             graphCoord[pathFin[i + 1][1]][pathFin[i + 1][0]], (0, 255, 0), 3)
 
-    contours, hierarchy = cv2.findContours(imgRotate, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-    for i in range(len(contours)):
-        area = cv2.contourArea(contours[i])  # поиск квадрата по его предполагаемой площади
-        epsilon = 0.1 * cv2.arcLength(contours[i], True)  # определение угловых точек квадрата
-        approx = cv2.approxPolyDP(contours[i], epsilon, True)  # поиск квадрата по форме
-        if len(approx) == 4:
-            if minArea < area < maxArea:
-                squareIndex = i
-                print('*' * 100)
-                break
 
-    resultPoints = np.float32([[approx[0][0][0], approx[0][0][1]], [approx[1][0][0], approx[1][0][1]],
-                            [approx[2][0][0], approx[2][0][1]], [approx[3][0][0], approx[3][0][1]]])
-    print('result points: ', resultPoints)
-    M = cv2.getPerspectiveTransform(resultPoints, imgFinPoints)
-    imgPerspective = cv2.warpPerspective(imgRotate, M, (100, 100))
+cv2.line(map, obstacleLine[0], obstacleLine[1], (0, 0, 255), 2)
 
-    center = [int(imgRotate.shape[0] / 2), int(imgRotate.shape[1] / 2)]
-    imgFin = imgRotate[(center[1] - halfLine):(center[1] + halfLine), (center[0] - halfLine):(center[0] + halfLine)]
-    if imgFin.shape[0] == 0 or imgFin.shape[1] == 0:
-        imgFin = imgRotate  # при малых углах поворота одна из осей может обнулиться, исправить позже
-    imgFin = cv2.resize(imgFin, (100, 100))
+'''print('-------------------------PATH MATRIX-------------------------')
+for i in graphPath:
+    print(i)'''
 
-    unit = round(imgFin.shape[0] / 12)  # 1/12 картинки это ширина её рамки и половина ширины крайней линии
-    find_points([unit * 6, unit * 3], unit, 1, 1)
-    define_direction(imgFin, 1)  # определение направления поворота робота
-    find_points([unit * 9, unit * 6], unit, 1, 2)
-    define_direction(imgFin, 2)
-    find_points([unit * 6, unit * 9], unit, 1, 1)
-    define_direction(imgFin, 3)
-    find_points([unit * 3, unit * 6], unit, 1, 2)
-    define_direction(imgFin, 4)
-    angleDeg += direction
-    angleCurr = angleDeg
-    #print(angleDeg)
-    if angleCurr < 0:
-        angleCurr += 360
-    img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
-    cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
 
-    centerArray.append(centerCurr)
-    if frameCounter > 2:
-        for i in range(1, len(centerArray) - 1):
-            if centerArray[i] != centerArray[i + 1]:
-                cv2.line(img, centerArray[i], centerArray[i + 1], (0, 255, 0), 2)
-
-    speed = round(math.sqrt(((centerCurr[0] - centerPrev[0]) ** 2) +
-                  ((centerCurr[1] - centerPrev[1]) ** 2)))
-
-    angleAdd = angleCurr - 180
-    angularVel = angleCurr - anglePrev
-    print(imgFin.shape)
-#********************************************  КОНЕЦ БЛОКА ОБРАБОТКИ ВИДЕО  ********************************************
-#***********************************************  НАЧАЛО БЛОКА НАВИГАЦИИ  **********************************************
-    if navigation.proxCheck(centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1]) == False:
-        print('proximity check not passed')
-        angleDiff = navigation.angleDiff(angleCurr, centerCurr[0], centerCurr[1], targetPoint[0], targetPoint[1])
-        print('angle of difference: ', angleDiff)
-        my_server.serverReadyFlag = True
-        my_server.command = navigation.moveSimple(angleDiff)
-
-    else:
-        if targetPoint[2] == 2:
-            targetPoint[0] = trajectory[0][0]
-            targetPoint[1] = trajectory[0][1]
-            targetPoint[2] = 0
-        else:
-            targetPoint[0] = trajectory[targetPoint[2] + 1][0]
-            targetPoint[1] = trajectory[targetPoint[2] + 1][1]
-            targetPoint[2] += 1
-
-#************************************************  КОНЕЦ БЛОКА НАВИГАЦИИ  **********************************************
-#***********************************************  НАЧАЛО БЛОКА ОТРИСОВКИ  **********************************************
-    cv2.circle(imgFin, (markArray[0][0], markArray[0][1]), 2, (0, 0, 0), 2)  # показывает проверяемые точки
-    cv2.circle(imgFin, (markArray[0][0], markArray[0][1]), 4, (255, 255, 255), 2)
-    cv2.circle(imgFin, (markArray[1][0], markArray[1][1]), 2, (0, 0, 0), 2)
-    cv2.circle(imgFin, (markArray[1][0], markArray[1][1]), 4, (255, 255, 255), 2)
-    cv2.circle(imgFin, (markArray[2][0], markArray[2][1]), 2, (0, 0, 0), 2)
-    cv2.circle(imgFin, (markArray[2][0], markArray[2][1]), 4, (255, 255, 255), 2)
-
-    #cv2.putText(img, str(speed), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-    cv2.putText(img, '0', (approx[0][0][0], approx[0][0][1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-    cv2.putText(img, '1', (approx[1][0][0], approx[1][0][1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-    cv2.putText(img, '2', (approx[2][0][0], approx[2][0][1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-    cv2.putText(img, '3', (approx[3][0][0], approx[3][0][1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-    # показывает угол рассогласования
-
-    img = cv2.line(img, trajectory[0], trajectory[1], (255, 255, 0), 2)  # отрисовка траектории вручную
-    img = cv2.line(img, trajectory[1], trajectory[2], (255, 255, 0), 2)  # потом сделать для любого количества точек
-    img = cv2.line(img, trajectory[2], trajectory[0], (255, 255, 0), 2)
-
-    img = cv2.drawContours(img, contours, squareIndex, (255, 0, 0), 2)
-    cv2.line(img, centerCurr, (targetPoint[0], targetPoint[1]), (255, 0, 255), 2)
-    cv2.line(img, topLine[0], topLine[1], (0, 255, 0), 2)
-    cv2.imshow("Image", img)
-    cv2.imshow("Perspective", imgPerspective)
-    cv2.imshow("Fin", imgFin)
-    print('frame ', frameCounter)
-    frameCounter += 1
-#************************************************  КОНЕЦ БЛОКА ОТРИСОВКИ  **********************************************
-    if cv2.waitKey(1) & 0xff == ord('q'):
-        break
+cv2.line(map, obstacleLine[0], obstacleLine[1], (0, 0, 255), 2)
+cv2.imshow('map', map)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
