@@ -2,7 +2,6 @@ from jetbot import Robot
 import socket
 import time
 from rplidar import RPLidar
-import pickle
 
 lidar = RPLidar('/dev/ttyUSB0')
 arr = []
