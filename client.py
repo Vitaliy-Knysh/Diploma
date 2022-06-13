@@ -55,6 +55,7 @@ while True:
                 print('%d: Got %d measurments' % (i, len(scan)))
                 if len(scan) > 100:
                     arr = scan
+                    break
                 if i >= 2:
                     break
             for i in arr:
