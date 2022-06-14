@@ -62,6 +62,7 @@ while True:
                 data += str(round(i[1], 1)) + ' ' + str(round(i[2])) + ' '
             send(data)
             lidar.stop()
+            time.sleep(1)
 
             
         robot.set_motors(leftMotor, rightMotor)
