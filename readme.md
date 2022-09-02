@@ -5,9 +5,10 @@
 
 ## Используемое оборудование ##
 Проект сделан на базе робота Nvidia Jetbot:
- ![image](https://user-images.githubusercontent.com/75195148/188176975-e1e37d62-e72b-4cba-aece-bd8aa60ba931.png)
+![image](https://user-images.githubusercontent.com/75195148/188177514-cca5588a-53f3-40e9-a5da-cae0e5658d35.png)
  
 Чтобы превратить робота в курьера, понадобилось доработать его: установить лазерный дальномер и испровизированный ковш для перемещения грузов:
+
  ![image](https://user-images.githubusercontent.com/75195148/188176758-a0d95ca8-63e1-4b7c-82a8-4cf2ed15de5a.png)
 
  Робот находится на столе, над которым расположена камера
