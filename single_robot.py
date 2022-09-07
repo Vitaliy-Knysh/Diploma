@@ -25,7 +25,7 @@ camera_matrix = np.array([[round(Mtx[0],2), round(Mtx[1],2), round(Mtx[2],2)], [
 dist_coefs = np.array([[round(Mtx[9],2), round(Mtx[10],2), round(Mtx[11],2),round(Mtx[12],2),round(Mtx[13],2)]])
 size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
         int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-
+ 
 newcameramtx, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coefs, (size[0], size[1]), 1, (size[0], size[1]))
 x, y, w, h = roi
 M = cv2.getRotationMatrix2D((size[0]/2,size[1]/2),5,1)
