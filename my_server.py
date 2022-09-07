@@ -28,7 +28,7 @@ def start():
 def handle_client(usr):
     data = usr.recv(400).decode('utf-8')
     global serverReadyFlag
-    if data:
+    if data: 
         if data == 'r' and serverReadyFlag == True:
             usr.send(command.encode('utf-8'))
             serverReadyFlag = False
