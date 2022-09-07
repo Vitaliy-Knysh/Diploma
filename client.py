@@ -73,4 +73,4 @@ while True:
         send('r')
         if data == 'c':
             conn.close()
-            break
+            break 
